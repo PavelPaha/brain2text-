@@ -13,7 +13,6 @@ class MyDataset(Dataset):
 
     def __getitem__(self, idx):
         res = self.data.iloc[idx].to_dict()
-        # print(res)
         return res
 
 

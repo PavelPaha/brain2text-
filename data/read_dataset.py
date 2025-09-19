@@ -1,7 +1,6 @@
 import h5py
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 import os
 
 
@@ -12,7 +11,6 @@ TRANSCRIPTION_KEY = 'transcription'
 
 def decode_transcription_fixed(ids):
     try:
-        # Convert to numpy array if it isn't already, then find first zero
         ids_array = np.array(ids)
         zero_indices = np.where(ids_array == 0)[0]
         if len(zero_indices) > 0:
@@ -25,46 +23,14 @@ def decode_transcription_fixed(ids):
         
     return "".join(char_list)
 
-def load_metadata_from_hdf5(file_path):
-    metadata = []
-    try:
-        with h5py.File(file_path, 'r') as f:
-            # The top-level keys ARE the trials.
-            for trial_key in f.keys():
-                trial_group = f[trial_key]
-                
-                # Check if the group contains the correct dataset names
-                if isinstance(trial_group, h5py.Group) and NEURAL_DATA_KEY in trial_group and TRANSCRIPTION_KEY in trial_group:
-                    
-                    num_time_bins = trial_group[NEURAL_DATA_KEY].shape[0]
-                    
-                    # The transcription is an array of integers, not a string.
-                    # We will load it as a list of numbers for now.
-                    transcription_ids = list(trial_group[TRANSCRIPTION_KEY][()])
-                    
-                    metadata.append({
-                        'trial_id': trial_key,
-                        'num_time_bins': num_time_bins,
-                        'transcription_ids': transcription_ids,
-                        # We can't get num_words directly yet, so we'll estimate from the length of the ID list.
-                        # This might not be perfect but is a good start.
-                        'num_words_estimate': len(transcription_ids) 
-                    })
-    except Exception as e:
-        print(f"Error processing file {file_path}: {e}")
-        import traceback
-        traceback.print_exc()
-    return metadata
-
-
 def get_data(split='train') -> pd.DataFrame:
     session_dirs = sorted([d for d in os.listdir(BASE_DIR) if os.path.isdir(os.path.join(BASE_DIR, d))])
 
     train_data = []
 
-    for session in tqdm(session_dirs[:1]):
+    for session in session_dirs[1:2]:
         session_path = os.path.join(BASE_DIR, session)
-        file_path = os.path.join(session_path, 'data_train.hdf5')
+        file_path = os.path.join(session_path, f'data_{split}.hdf5')
         
         if os.path.exists(file_path):
             if split not in file_path:

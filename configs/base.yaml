@@ -13,5 +13,5 @@ data:
   labels_type: "phonemes"
 
 model:
-  input_size: 128
+  input_size: 512
   hidden_size: 256
