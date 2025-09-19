@@ -1,0 +1,17 @@
+train:
+  shuffle: true
+  batch_size: 16
+  num_workers: 4
+  epochs: 10
+
+val:
+  shuffle: false
+  batch_size: 16
+  num_workers: 4
+
+data:
+  labels_type: "phonemes"
+
+model:
+  input_size: 128
+  hidden_size: 256
