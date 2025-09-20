@@ -4,11 +4,8 @@ import pandas as pd
 from tqdm import tqdm
 import os
 from data.utils import cut_phonemes_ids
+from config import BASE_DIR, NEURAL_DATA_KEY, TRANSCRIPTION_KEY
 
-
-BASE_DIR = 'brain-to-text-25/t15_copyTask_neuralData/hdf5_data_final'
-NEURAL_DATA_KEY = 'input_features'
-TRANSCRIPTION_KEY = 'transcription'
 
 def decode_transcription_fixed(ids):
     try:
