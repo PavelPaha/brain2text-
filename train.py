@@ -9,23 +9,36 @@ from torch import nn
 from tqdm import tqdm
 import argparse
 from omegaconf import OmegaConf
+import torch.nn.functional as F
 
 
-def prepare_batch(batch, device):
-    neural_data = batch['neural_data'].to(device)
-    labels = batch['phonems_ids'].to(device)
-    return neural_data, labels 
+def prepare_batch(batch):
+    return batch
+
+
+def calc_loss(criterion, raw_logits, labels):
+    logits_permuted = raw_logits.permute(1, 0, 2)
+    log_probs = F.log_softmax(logits_permuted, dim=2)
+    loss = criterion(log_probs, labels, 
+                    input_lengths=torch.full((raw_logits.size(0),), raw_logits.size(1), dtype=torch.long),
+                    target_lengths=torch.full((labels.size(0),), labels.size(1), dtype=torch.long))
+    
+    return loss
 
 
 def train_step(model, data_loader, optimizer, criterion, device):
     model.train()
     total_loss = 0
     for batch in tqdm(data_loader, desc="Training"):
-        input, labels = prepare_batch(batch, device)
-        logits, output = model(input)
-        loss = criterion(logits.permute(1, 0, 2), labels, 
-                         input_lengths=torch.full((logits.size(0),), logits.size(1), dtype=torch.long),
-                         target_lengths=torch.full((labels.size(0),), labels.size(1), dtype=torch.long))
+        input = batch['neural_data']
+        labels = batch['phonemes_ids']
+
+        batch = prepare_batch(batch, device)
+        logits, output = model(batch)
+
+        logits_permuted = logits.permute(1, 0, 2)
+        log_probs = F.log_softmax(logits_permuted, dim=2)
+        loss = calc_loss(criterion, logits, labels)
         total_loss += loss.item()
         optimizer.zero_grad()
         loss.backward()
@@ -39,34 +52,51 @@ def evaluate_step(model, data_loader, criterion, device):
     total_loss = 0
     with torch.no_grad():
         for batch in tqdm(data_loader, desc="Validation"):
-            input, labels = prepare_batch(batch, device)
-            logits, _ = model(input)
-            loss = criterion(logits.permute(1, 0, 2), labels, 
-                             input_lengths=torch.full((logits.size(0),), logits.size(1), dtype=torch.long),
-                             target_lengths=torch.full((labels.size(0),), labels.size(1), dtype=torch.long))
+            batch = prepare_batch(batch, device)
+            labels = batch['phonemes_ids']
+
+            logits, _ = model(batch)
+            loss = calc_loss(criterion, logits, labels)
             total_loss += loss.item()
 
     return total_loss / len(data_loader)
 
+
 def main(cfg, args):
+    device = f'cuda:{args.device_id}'
     labels_type = cfg.data.labels_type
     output_size = len(PHONEMES) if labels_type == 'phonemes' else len(DIPHONES)
 
+   
     train_data = get_data(split='train')
     val_data = get_data(split='val')
     train_dataset = create_dataset(train_data, output_size=output_size)
     val_dataset = create_dataset(val_data, output_size=output_size)
 
-    train_loader = create_dataloader(train_dataset, batch_size=cfg.train.batch_size, shuffle=cfg.train.shuffle, num_workers=cfg.train.num_workers)
-    val_loader = create_dataloader(val_dataset, batch_size=cfg.val.batch_size, shuffle=cfg.val.shuffle, num_workers=cfg.val.num_workers)
+    train_loader = create_dataloader(train_dataset, 
+                                     batch_size=cfg.train.batch_size, 
+                                     shuffle=cfg.train.shuffle, 
+                                     num_workers=cfg.train.num_workers
+                                    )
+    
+    val_loader = create_dataloader(val_dataset, 
+                                   batch_size=cfg.val.batch_size, 
+                                   shuffle=cfg.val.shuffle, 
+                                   num_workers=cfg.val.num_workers
+                                   )
 
-    model = GRU(input_size=cfg.model.input_size, hidden_size=cfg.model.hidden_size, output_size=output_size)
-    optimizer = torch.optim.Adam(model.parameters())
-    criterion = nn.CTCLoss()
+    days_count = train_data['trial_id'].nunique()
+    print(days_count)
+    model = GRU(input_size=cfg.model.input_size, 
+                hidden_size=cfg.model.hidden_size, 
+                output_size=output_size, 
+                device=device, 
+                days_count=days_count)
+    
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    criterion = nn.CTCLoss(blank=0, reduction='mean', zero_infinity=True)
 
     model.train()
-    # device = f'cuda:{args.device_id}'
-    device = 'cpu'
     model.to(device)
     print(f"Training on device: {device}")
     for epoch in range(cfg.train.epochs):
@@ -77,8 +107,8 @@ def main(cfg, args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--device-id', type=int)
-    parser.add_argument('--config', type=str)
+    parser.add_argument('--device-id', type=int, default=3)
+    parser.add_argument('--config', type=str, default='base.yaml')
     args = parser.parse_args()
 
     cfg = OmegaConf.load(f'configs/{args.config}')
