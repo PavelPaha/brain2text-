@@ -21,5 +21,5 @@ def get_labels_transitions_ids(labels: list):
 def cut_phonemes_ids(phonemes_ids):
     for i in range(len(phonemes_ids)-1, -1, -1):
         if phonemes_ids[i] != 0:
-            return phonemes_ids[:i]
+            return phonemes_ids[:i+1]
     return phonemes_ids
