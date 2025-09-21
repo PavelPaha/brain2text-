@@ -4,3 +4,4 @@ BASE_DIR = 'brain-to-text-25/t15_copyTask_neuralData/hdf5_data_final'
 NEURAL_DATA_KEY = 'input_features'
 TRANSCRIPTION_KEY = 'transcription'
 NUM_THREADS_DATA_READING = 8
+CHECKPOINT_PATH = 'checkpoints'

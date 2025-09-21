@@ -2,7 +2,7 @@ from data.dataloader import create_dataloader
 from data.dataset import create_dataset
 from data.read_dataset import read_dataset
 from data.utils import PHONEMES, DIPHONES
-from config import BASE_DIR, NUM_THREADS_DATA_READING
+from config import BASE_DIR, NUM_THREADS_DATA_READING, CHECKPOINT_PATH
 
 from model.model import GRU
 import torch
@@ -112,5 +112,7 @@ def run_training(cfg, args):
             "train_epoch_loss": train_loss,
             "val_epoch_loss": val_loss
         }, step=epoch+1)
+
+        torch.save(model, f'{CHECKPOINT_PATH}/{cfg.model_name}_epoch_{epoch}.pth')
 
     mlflow.pytorch.log_model(model, artifact_path="model")

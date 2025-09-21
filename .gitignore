@@ -34,3 +34,7 @@ brain-to-text-25
 # mlflow
 mlruns/*
 mlartifacts
+
+# checkpoints
+checkpoints/
+*.pth

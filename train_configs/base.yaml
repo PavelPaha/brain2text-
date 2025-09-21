@@ -1,4 +1,5 @@
 experiment_name: base
+model_name: base
 
 train:
   shuffle: true

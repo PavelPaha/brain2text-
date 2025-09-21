@@ -7,7 +7,8 @@ def collate_fn(batch):
     return {
         'day_idx': torch.tensor([item['day_idx'] for item in batch]),
         'neural_data': pad_sequence([torch.tensor(item['neural_data']) for item in batch], batch_first=True),
-        'phonemes_ids': pad_sequence([torch.tensor(item['phonemes_ids']) for item in batch], batch_first=True, padding_value=0)
+        'phonemes_ids': pad_sequence([torch.tensor(item['phonemes_ids']) for item in batch], batch_first=True, padding_value=0),
+        # 'transcription': torch.tensor(batch['transcription'], dtype=object)
     }
     
 class Loader(DataLoader):
