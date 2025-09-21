@@ -3,8 +3,10 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import os
+from multiprocessing import Pool
 from data.utils import cut_phonemes_ids
-from config import BASE_DIR, NEURAL_DATA_KEY, TRANSCRIPTION_KEY
+from config import NEURAL_DATA_KEY, TRANSCRIPTION_KEY
+
 
 
 def decode_transcription_fixed(ids):
@@ -21,14 +23,13 @@ def decode_transcription_fixed(ids):
         
     return "".join(char_list)
 
-def get_data(split='train') -> pd.DataFrame:
-    session_dirs = sorted([d for d in os.listdir(BASE_DIR) if os.path.isdir(os.path.join(BASE_DIR, d))])
+
+def get_data(sessions, split='train') -> pd.DataFrame:
     train_data = []
     trial_key_to_day = {}
     cur_day = 0
 
-    for session in tqdm(session_dirs[:3]):
-        session_path = os.path.join(BASE_DIR, session)
+    for session_path in tqdm(sessions):
         file_path = os.path.join(session_path, f'data_{split}.hdf5')
         
         if os.path.exists(file_path):
@@ -53,7 +54,7 @@ def get_data(split='train') -> pd.DataFrame:
                             cur_day += 1
                         
                         train_data.append({
-                            'session': session,
+                            'session': session_path,
                             'trial_id': trial_key,
                             'neural_data': neural_data,
                             'transcription': transcription_text,
@@ -64,5 +65,24 @@ def get_data(split='train') -> pd.DataFrame:
 
     return pd.DataFrame(train_data)
 
-if __name__ == "__main__":
-    print(get_data('train').head())
+
+def get_sessions(directory):
+    return sorted([os.path.join(directory, d) for d in os.listdir(directory) if os.path.isdir(os.path.join(directory, d))])
+
+
+def split_sessions(sessions, workers):
+    parts = np.array_split(sessions, workers)
+    return [list(p) for p in parts]
+    
+
+def read_dataset(directory, split, workers=1):
+    sessions = get_sessions(directory)
+    worker_to_sessions = split_sessions(sessions, workers)
+    args = [(chunk, split) for chunk in worker_to_sessions if len(chunk) > 0]
+    with Pool(processes=min(workers, len(args))) as pool:
+        dfs = pool.starmap(get_data, args)
+        
+    if len(dfs) == 0:
+        return pd.DataFrame([])
+    return pd.concat(dfs, ignore_index=True)
+

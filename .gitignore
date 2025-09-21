@@ -33,3 +33,4 @@ brain-to-text-25
 
 # mlflow
 mlruns/*
+mlartifacts

@@ -1,7 +1,8 @@
 from data.dataloader import create_dataloader
 from data.dataset import create_dataset
-from data.read_dataset import get_data
+from data.read_dataset import read_dataset
 from data.utils import PHONEMES, DIPHONES
+from config import BASE_DIR, NUM_THREADS_DATA_READING
 
 from model.model import GRU
 import torch
@@ -25,18 +26,20 @@ def calc_loss(criterion, raw_logits, labels):
     return loss
 
 
-def train_step(model, data_loader, optimizer, criterion, device):
+def train_step(model, data_loader, optimizer, criterion, global_step):
     model.train()
     total_loss = 0
     for batch in tqdm(data_loader, desc="Training"):
-        input = batch['neural_data']
+        # input = batch['neural_data']
         labels = batch['phonemes_ids']
 
         batch = prepare_batch(batch)
-        logits, output = model(batch)
+        logits, _ = model(batch)
         loss = calc_loss(criterion, logits, labels)
         
-        mlflow.log_metrics({'train_loss': loss.item()})
+        mlflow.log_metric('train_loss', loss.item(), step=global_step)
+        global_step += 1
+
         total_loss += loss.item()
         optimizer.zero_grad()
         loss.backward()
@@ -45,7 +48,7 @@ def train_step(model, data_loader, optimizer, criterion, device):
     return total_loss / len(data_loader)
 
 
-def evaluate_step(model, data_loader, criterion, device):
+def evaluate_step(model, data_loader, criterion):
     model.eval()
     total_loss = 0
     with torch.no_grad():
@@ -65,8 +68,8 @@ def run_training(cfg, args):
     labels_type = cfg.data.labels_type
     output_size = len(PHONEMES) if labels_type == 'phonemes' else len(DIPHONES)
 
-    train_data = get_data(split='train')
-    val_data = get_data(split='val')
+    train_data = read_dataset(BASE_DIR, split='train', workers=NUM_THREADS_DATA_READING)
+    val_data = read_dataset(BASE_DIR, split='val', workers=NUM_THREADS_DATA_READING)
     train_dataset = create_dataset(train_data, output_size=output_size)
     val_dataset = create_dataset(val_data, output_size=output_size)
 
@@ -90,15 +93,19 @@ def run_training(cfg, args):
                 device=device, 
                 days_count=days_count)
     
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    optimizer = torch.optim.Adam(model.parameters(), lr=cfg.train.lr)
     criterion = nn.CTCLoss(blank=0, reduction='mean', zero_infinity=True)
 
     model.train()
     model.to(device)
     print(f"Training on device: {device}")
+
+    global_step = 0
     for epoch in range(cfg.train.epochs):
-        train_loss = train_step(model, train_loader, optimizer, criterion, device)
-        val_loss = evaluate_step(model, val_loader, criterion, device)
+        train_loss = train_step(model, train_loader, optimizer, criterion, global_step)
+        global_step += len(train_loader)
+
+        val_loss = evaluate_step(model, val_loader, criterion)
         print(f"Epoch {epoch+1}, Train Loss: {train_loss}, Val Loss: {val_loss}")
 
         mlflow.log_metrics({
