@@ -1,6 +1,6 @@
 experiment_name: rnn
-run_name: constant
-model_name: constant_rnn
+run_name: cosine_warmup
+model_name: cosine_warmup_rnn
 seed: 42
 
 train:
@@ -11,7 +11,7 @@ train:
   lr: 1e-4
 
   lr_scheduler:
-    type: constant
+    type: cosine
     low_lr: 0.0
     warmup: true
     warmup_steps: 0.1 # relative proportion of all steps

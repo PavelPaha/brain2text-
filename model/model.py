@@ -39,6 +39,7 @@ class GRU(nn.Module):
         #     nn.ReLU()
         # )
         self.gru = nn.GRU(hidden_size, hidden_size, batch_first=True)
+        self.dropout = nn.Dropout(0.2)
         self.out_fc = nn.Linear(hidden_size, output_size)
         self.device = device
 
@@ -64,5 +65,6 @@ class GRU(nn.Module):
         # print(x.size(1), batch['phonemes_ids'].size(1))
         
         logits, hidden_states = self.gru(x)
+        logits = self.dropout(logits)
         out = self.out_fc(hidden_states)
         return logits, out

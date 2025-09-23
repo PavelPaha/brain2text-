@@ -1,6 +1,8 @@
+from training.lr import get_lr_scheduler
 from data.dataloader import create_dataloader
 from data.dataset import create_dataset
 from data.read_dataset import read_dataset
+from training.utils import set_seed
 from data.utils import PHONEMES, DIPHONES
 from config import BASE_DIR, NUM_THREADS_DATA_READING, CHECKPOINT_PATH
 
@@ -10,6 +12,7 @@ from torch import nn
 from tqdm import tqdm
 import torch.nn.functional as F
 import mlflow
+
 
 
 def prepare_batch(batch):
@@ -26,7 +29,7 @@ def calc_loss(criterion, raw_logits, labels):
     return loss
 
 
-def train_step(model, data_loader, optimizer, criterion, global_step):
+def train_step(model, data_loader, optimizer, criterion, lr_scheduler):
     model.train()
     total_loss = 0
     for batch in tqdm(data_loader, desc="Training"):
@@ -37,13 +40,17 @@ def train_step(model, data_loader, optimizer, criterion, global_step):
         logits, _ = model(batch)
         loss = calc_loss(criterion, logits, labels)
         
-        mlflow.log_metric('train_loss', loss.item(), step=global_step)
-        global_step += 1
+        current_step = lr_scheduler.last_epoch
+        mlflow.log_metrics({
+            'train_loss': loss.item(),
+            'lr': optimizer.param_groups[0]['lr']
+        }, step=current_step)
 
         total_loss += loss.item()
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        lr_scheduler.step()
 
     return total_loss / len(data_loader)
 
@@ -63,7 +70,8 @@ def evaluate_step(model, data_loader, criterion):
     return total_loss / len(data_loader)
 
 
-def run_training(cfg, args):
+def run(cfg, args):
+    set_seed(cfg.seed)
     device = f'cuda:{args.device_id}'
     labels_type = cfg.data.labels_type
     output_size = len(PHONEMES) if labels_type == 'phonemes' else len(DIPHONES)
@@ -86,24 +94,24 @@ def run_training(cfg, args):
                                    )
 
     days_count = train_data['trial_id'].nunique()
-    print(days_count)
     model = GRU(input_size=cfg.model.input_size, 
                 hidden_size=cfg.model.hidden_size, 
                 output_size=output_size, 
                 device=device, 
                 days_count=days_count)
     
+    total_steps = len(train_loader) * cfg.train.epochs
+
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.train.lr)
+    lr_scheduler = get_lr_scheduler(optimizer, cfg.train.lr_scheduler, total_steps)
     criterion = nn.CTCLoss(blank=0, reduction='mean', zero_infinity=True)
 
     model.train()
     model.to(device)
     print(f"Training on device: {device}")
 
-    global_step = 0
     for epoch in range(cfg.train.epochs):
-        train_loss = train_step(model, train_loader, optimizer, criterion, global_step)
-        global_step += len(train_loader)
+        train_loss = train_step(model, train_loader, optimizer, criterion, lr_scheduler)
 
         val_loss = evaluate_step(model, val_loader, criterion)
         print(f"Epoch {epoch+1}, Train Loss: {train_loss}, Val Loss: {val_loss}")
