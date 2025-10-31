@@ -1,0 +1,29 @@
+experiment_name: rnn
+run_name: constant
+model_name: constant_rnn
+seed: 42
+
+train:
+  shuffle: true
+  batch_size: 128
+  num_workers: 4
+  epochs: 100
+  lr: 1e-4
+
+  lr_scheduler:
+    type: constant
+    low_lr: 0.0
+    warmup: true
+    warmup_steps: 0.1 # relative proportion of all steps
+
+val:
+  shuffle: false
+  batch_size: 16
+  num_workers: 4
+
+data:
+  labels_type: "phonemes"
+
+model:
+  input_size: 512
+  hidden_size: 1024

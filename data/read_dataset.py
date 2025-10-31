@@ -1,12 +1,12 @@
 import h5py
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 import os
+from multiprocessing import Pool
+from data.utils import cut_phonemes_ids
+from config import NEURAL_DATA_KEY, TRANSCRIPTION_KEY
 
-
-BASE_DIR = 'brain-to-text-25/t15_copyTask_neuralData/hdf5_data_final'
-NEURAL_DATA_KEY = 'input_features'
-TRANSCRIPTION_KEY = 'transcription'
 
 
 def decode_transcription_fixed(ids):
@@ -23,13 +23,13 @@ def decode_transcription_fixed(ids):
         
     return "".join(char_list)
 
-def get_data(split='train') -> pd.DataFrame:
-    session_dirs = sorted([d for d in os.listdir(BASE_DIR) if os.path.isdir(os.path.join(BASE_DIR, d))])
 
+def get_data(sessions, split='train') -> pd.DataFrame:
     train_data = []
+    trial_key_to_day = {}
+    cur_day = 0
 
-    for session in session_dirs[1:2]:
-        session_path = os.path.join(BASE_DIR, session)
+    for session_path in tqdm(sessions):
         file_path = os.path.join(session_path, f'data_{split}.hdf5')
         
         if os.path.exists(file_path):
@@ -41,25 +41,48 @@ def get_data(split='train') -> pd.DataFrame:
                     
                     if isinstance(trial_group, h5py.Group) and NEURAL_DATA_KEY in trial_group:
                         neural_data = trial_group[NEURAL_DATA_KEY][()]
-                        phonems = trial_group['seq_class_ids'][()]
+                        phonemes_ids = trial_group['seq_class_ids'][()]
+                        phonemes_ids = cut_phonemes_ids(phonemes_ids)
                         
                         transcription_text = None
                         if TRANSCRIPTION_KEY in trial_group:
                             transcription_ids = trial_group[TRANSCRIPTION_KEY][()]
                             transcription_text = decode_transcription_fixed(transcription_ids)
+
+                        if trial_key not in trial_key_to_day:
+                            trial_key_to_day[trial_key] = cur_day
+                            cur_day += 1
                         
                         train_data.append({
-                            'session': session,
+                            'session': session_path,
                             'trial_id': trial_key,
                             'neural_data': neural_data,
                             'transcription': transcription_text,
-                            'num_time_bins': neural_data.shape[0],
-                            'num_features': neural_data.shape[1],
-                            'phonems_ids': phonems,
+                            'day_idx': trial_key_to_day[trial_key],
+                            'phonemes_ids': phonemes_ids,
                             'num_words': len(transcription_text.split()) if transcription_text else 0,
                         })
 
     return pd.DataFrame(train_data)
 
-if __name__ == "__main__":
-    print(get_data('train').head())
+
+def get_sessions(directory):
+    return sorted([os.path.join(directory, d) for d in os.listdir(directory) if os.path.isdir(os.path.join(directory, d))])
+
+
+def split_sessions(sessions, workers):
+    parts = np.array_split(sessions, workers)
+    return [list(p) for p in parts]
+    
+
+def read_dataset(directory, split, workers=1):
+    sessions = get_sessions(directory)
+    worker_to_sessions = split_sessions(sessions, workers)
+    args = [(chunk, split) for chunk in worker_to_sessions if len(chunk) > 0]
+    with Pool(processes=min(workers, len(args))) as pool:
+        dfs = pool.starmap(get_data, args)
+        
+    if len(dfs) == 0:
+        return pd.DataFrame([])
+    return pd.concat(dfs, ignore_index=True)
+
